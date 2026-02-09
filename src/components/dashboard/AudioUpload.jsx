@@ -66,7 +66,7 @@ export default function AudioUpload({ onAnalyze }) {
                  border border-orange-900/20
                  rounded-2xl p-8 space-y-6 shadow-xl"
     >
-      {/* Title */}
+    
       <div>
         <h3 className="text-lg font-semibold text-orange-50">
           Upload New Call
@@ -76,7 +76,7 @@ export default function AudioUpload({ onAnalyze }) {
         </p>
       </div>
 
-      {/* Drop Zone */}
+   
       <motion.div
         whileHover={{ scale: 1.01 }}
         onClick={() => inputRef.current.click()}
@@ -103,7 +103,7 @@ export default function AudioUpload({ onAnalyze }) {
         />
       </motion.div>
 
-      {/* File Info */}
+     
       {file && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -125,7 +125,7 @@ export default function AudioUpload({ onAnalyze }) {
         </motion.div>
       )}
 
-      {/* Error */}
+
       {error && (
         <motion.p
           initial={{ opacity: 0 }}
@@ -136,7 +136,6 @@ export default function AudioUpload({ onAnalyze }) {
         </motion.p>
       )}
 
-      {/* Analyze Button */}
       <button
         disabled={!file}
         onClick={handleAnalyze}

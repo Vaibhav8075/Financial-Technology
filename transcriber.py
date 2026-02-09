@@ -11,8 +11,7 @@ async def get_transcript_with_confidence(file_content, filename):
         response_format="verbose_json"
     )
     
-    # Extract confidence from the first segment as a representative score
-    # (Or average all segments for a total score)
+
     conf = 0.0
     if response.segments:
         conf = sum(math.exp(s.avg_logprob) for s in response.segments) / len(response.segments)

@@ -11,9 +11,9 @@ import Tips from '../components/dashboard/Tips'
 import AudioUpload from '../components/dashboard/AudioUpload'
 
 const sampleCalls = [
-  { id: 1, title: 'Client A - Onboarding', duration: '12:34', priority: 'low', needsFollowUp: false },
-  { id: 2, title: 'Client B - Billing issue', duration: '08:20', priority: 'high', needsFollowUp: true },
-  { id: 3, title: 'Client C - Feature request', duration: '05:12', priority: 'medium', needsFollowUp: true },
+  // { id: 1, title: 'Client A - Onboarding', duration: '12:34', priority: 'low', needsFollowUp: false },
+  // { id: 2, title: 'Client B - Billing issue', duration: '08:20', priority: 'high', needsFollowUp: true },
+  // { id: 3, title: 'Client C - Feature request', duration: '05:12', priority: 'medium', needsFollowUp: true },
 ]
 
 export default function Home() {
@@ -22,7 +22,7 @@ export default function Home() {
   const [calls, setCalls] = useState(sampleCalls)
   const [selectedCall, setSelectedCall] = useState(null)
 
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState('')  
   const [stats, setStats] = useState({ total: 0, followUp: 0, highPriority: 0 })
 
   function handleUploadClick() {
@@ -46,7 +46,7 @@ export default function Home() {
   }
 
 async function handleAnalyzeCall(file) {
-  // 1️⃣ Show immediate UI feedback
+
   const tempId = Date.now()
 
   setCalls(prev => [
@@ -60,7 +60,7 @@ async function handleAnalyzeCall(file) {
     ...prev,
   ])
 
-  // 2️⃣ Send file to backend
+
   const formData = new FormData()
   formData.append('file', file)
 
@@ -74,14 +74,14 @@ async function handleAnalyzeCall(file) {
 
     const { call_id } = await res.json()
 
-    // 3️⃣ Fetch final result
+
     const resultRes = await fetch(
       `http://127.0.0.1:8000/api/calls/result/${call_id}`
     )
 
     const data = await resultRes.json()
 
-    // 4️⃣ Replace processing card with REAL DATA
+
     setCalls(prev =>
       prev.map(call =>
         call.id === tempId
