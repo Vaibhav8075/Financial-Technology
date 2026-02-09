@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+// import { useNavigate } from 'react-router-dom'
 
 import Header from '../components/dashboard/Header'
 import Stats from '../components/dashboard/Stats'
@@ -16,6 +17,7 @@ const sampleCalls = [
 ]
 
 export default function Home() {
+  // const navigate = useNavigate()
   const fileInputRef = useRef(null)
   const [calls, setCalls] = useState(sampleCalls)
   const [selectedCall, setSelectedCall] = useState(null)
@@ -43,18 +45,70 @@ export default function Home() {
     ])
   }
 
-  function handleAnalyzeCall(file) {
-    setCalls(prev => [
-      {
-        id: Date.now(),
-        title: file.name,
-        duration: 'Processing...',
-        priority: 'low',
-        needsFollowUp: false,
-      },
-      ...prev,
-    ])
+async function handleAnalyzeCall(file) {
+  // 1️⃣ Show immediate UI feedback
+  const tempId = Date.now()
+
+  setCalls(prev => [
+    {
+      id: tempId,
+      title: file.name,
+      duration: 'Processing...',
+      priority: 'low',
+      needsFollowUp: false,
+    },
+    ...prev,
+  ])
+
+  // 2️⃣ Send file to backend
+  const formData = new FormData()
+  formData.append('file', file)
+
+  try {
+    const res = await fetch('http://127.0.0.1:8000/api/calls/analyze', {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!res.ok) throw new Error('Analyze failed')
+
+    const { call_id } = await res.json()
+
+    // 3️⃣ Fetch final result
+    const resultRes = await fetch(
+      `http://127.0.0.1:8000/api/calls/result/${call_id}`
+    )
+
+    const data = await resultRes.json()
+
+    // 4️⃣ Replace processing card with REAL DATA
+    setCalls(prev =>
+      prev.map(call =>
+        call.id === tempId
+          ? {
+              id: call_id,
+              title: file.name,
+              duration: 'Completed',
+              priority: 'low',
+              needsFollowUp: false,
+
+              transcript: data.transcript,
+              summary: data.summary,
+              intent: data.intent,
+              sentiment: data.sentiment,
+              action_items: data.action_items,
+            }
+          : call
+      )
+    )
+  } catch (err) {
+    console.error(err)
+    alert('Backend error')
   }
+}
+
+
+
 
   useEffect(() => {
     setStats({
@@ -83,11 +137,15 @@ export default function Home() {
         <Stats stats={stats} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-          <CallList
-            calls={calls}
-            query={query}
-            onOpen={setSelectedCall}
-          />
+<CallList
+  calls={calls}
+  query={query}
+  onOpen={(call) => {
+    const latest = calls.find(c => c.id === call.id)
+    setSelectedCall(latest)
+  }}
+/>
+
 
           <div className="space-y-6">
             <AudioUpload onAnalyze={handleAnalyzeCall} />
