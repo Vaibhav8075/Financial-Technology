@@ -19,7 +19,7 @@ async def process_audio(file: UploadFile = File(...)):
 
     try:
         # 1. Run Transcription
-        result = model.transcribe(temp_file)
+        result = model.transcribe(temp_file,task="translate")
         transcript_text = result["text"]
 
         # 2. VIEW in Terminal
@@ -42,6 +42,7 @@ async def process_audio(file: UploadFile = File(...)):
         if os.path.exists(temp_file):
             os.remove(temp_file)
 
-@app.get("/")
+@app.get("/docs")
+
 def root():
     return {"message": "Local Audio Intelligence System is Online"}
