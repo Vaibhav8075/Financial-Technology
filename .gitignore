@@ -1,4 +1,36 @@
+<<<<<<< HEAD
 .env
 __pycache__/
 transcriptions_log.txt
 *.pyc
+=======
+# Virtual Environment
+myenv/
+venv/
+ENV/
+
+# Python caching
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Audio processing & Temporary storage
+backend/storage/uploads/*
+!backend/storage/uploads/.gitkeep
+*.mp3
+*.wav
+*.m4a
+*.flac
+
+# Whisper Models (They are huge, don't push them!)
+~/.cache/whisper/
+backend/models/*.pt
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# VS Code settings
+.vscode/
+>>>>>>> da786fec2ef40a6f935babc2dc440ab9f86da631
