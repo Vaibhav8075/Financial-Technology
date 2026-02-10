@@ -4,11 +4,17 @@ import shutil
 import whisper
 import torch
 import re
+import json
+import asyncio
+from dotenv import load_dotenv
+from backboard import BackboardClient
 
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from util_check import ensure_ffmpeg
 
+
+load_dotenv()
 ensure_ffmpeg()
 
 app = FastAPI(title="Financial Audio Intelligence - Local MVP")
@@ -23,27 +29,96 @@ app.add_middleware(
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 model = whisper.load_model("base", device=DEVICE)
 
-CALL_RESULTS = {}
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+CALL_RESULTS = {}
+
+
+
+BACKBOARD_API_KEY = os.getenv("BACKBOARD_API_KEY")
+
+if not BACKBOARD_API_KEY:
+    print("❌ BACKBOARD_API_KEY NOT FOUND")
+else:
+    print("✅ BACKBOARD_API_KEY loaded")
+
+backboard_client = BackboardClient(api_key=BACKBOARD_API_KEY) if BACKBOARD_API_KEY else None
+BACKBOARD_ASSISTANT_ID = None
+BACKBOARD_THREAD_ID = None
+
+
+
+@app.on_event("startup")
+async def setup_backboard():
+    global BACKBOARD_ASSISTANT_ID, BACKBOARD_THREAD_ID
+
+    if not BACKBOARD_API_KEY or not backboard_client:
+        print("⚠️ Backboard disabled — running rule-based only")
+        return
+
+    try:
+   
+        assistant = await backboard_client.create_assistant(
+            name="Banking Call Verifier",
+            system_prompt="""You are a senior banking QA AI specialized in verifying customer call analysis.
+
+Your task is to analyze banking call transcripts and verify the automated system analysis.
+
+You must return your response as a JSON object with exactly three fields:
+1. verified_intent - must be one of: Loan Inquiry, Withdrawal Request, Deposit Request, Customer Complaint, General Inquiry, Account Issue
+2. verified_priority - must be one of: High, Medium, Low
+3. reasoning - must be an array of strings explaining your decisions
+
+CRITICAL FORMATTING RULES:
+- Output ONLY the JSON object
+- No markdown formatting
+- No code blocks
+- No backticks
+- No explanatory text before or after the JSON
+- The JSON must be valid and parseable
+
+Example of correct output format:
+The JSON should have verified_intent as a string, verified_priority as a string, and reasoning as an array of strings.
+
+When you analyze a call, consider:
+- What is the customers main concern or request
+- How urgent is this issue
+- What emotional state is the customer in
+- Are there any compliance or risk factors"""
+        )
+
+        BACKBOARD_ASSISTANT_ID = assistant.assistant_id
+        print(f"✅ Backboard Assistant created: {BACKBOARD_ASSISTANT_ID}")
+
+   
+        thread = await backboard_client.create_thread(BACKBOARD_ASSISTANT_ID)
+        BACKBOARD_THREAD_ID = thread.thread_id
+        print(f"✅ Backboard Thread created: {BACKBOARD_THREAD_ID}")
+
+    except Exception as e:
+        print(f"❌ Backboard Assistant creation failed: {e}")
+        BACKBOARD_ASSISTANT_ID = None
+        BACKBOARD_THREAD_ID = None
+
 
 
 def detect_intent(text):
     t = text.lower()
+    if any(w in t for w in ["complaint", "issue", "problem", "frustrated", "unacceptable"]):
+        return {"label": "Customer Complaint", "confidence": "High"}
+    if any(w in t for w in ["withdraw", "withdrawal", "cash", "blocking"]):
+        return {"label": "Withdrawal Request", "confidence": "High"}
     if any(w in t for w in ["loan", "emi", "interest", "mortgage"]):
         return {"label": "Loan Inquiry", "confidence": "High"}
-    if any(w in t for w in ["withdraw", "withdrawal", "cash"]):
-        return {"label": "Withdrawal Request", "confidence": "High"}
     if any(w in t for w in ["deposit", "add money"]):
         return {"label": "Deposit Request", "confidence": "High"}
-    if any(w in t for w in ["complaint", "issue", "problem"]):
-        return {"label": "Customer Complaint", "confidence": "High"}
     return {"label": "General Inquiry", "confidence": "Low"}
 
 
 def detect_sentiment(text):
     t = text.lower()
-    if any(w in t for w in ["angry", "frustrated", "annoyed", "bad"]):
+    if any(w in t for w in ["angry", "frustrated", "annoyed", "bad", "unacceptable"]):
         return {"label": "Negative", "score": -0.7}
     if any(w in t for w in ["happy", "satisfied", "thank you"]):
         return {"label": "Positive", "score": 0.6}
@@ -59,32 +134,24 @@ def extract_customer_name(text):
     for p in patterns:
         m = re.search(p, text.lower())
         if m:
-            return m.group(1).title()
+            name = m.group(1).strip()
+           
+            if '.' in name:
+                name = name.split('.')[0]
+            return name.title()
     return None
 
 
 def extract_numbers(text):
     phone = re.search(r"\b\d{10}\b", text)
-    card = re.search(r"\b\d{16}\b", text)
     account = re.search(r"\b\d{9,14}\b", text)
+    card = re.search(r"\b\d{16}\b", text)
 
     return {
         "phone_number": phone.group() if phone else None,
-        "card_number": f"**** **** **** {card.group()[-4:]}" if card else None,
-        "account_number": f"****{account.group()[-4:]}" if account else None
+        "account_number": f"****{account.group()[-4:]}" if account else None,
+        "card_number": f"**** **** **** {card.group()[-4:]}" if card else None
     }
-
-
-def extract_action_items(text):
-    items = []
-    t = text.lower()
-    if "follow up" in t:
-        items.append("Follow up with customer")
-    if "call back" in t:
-        items.append("Call customer back")
-    if "email" in t:
-        items.append("Send email to customer")
-    return items
 
 
 def calculate_priority(intent, sentiment):
@@ -99,37 +166,127 @@ def calculate_risk(sentiment):
     return "High" if sentiment["label"] == "Negative" else "Low"
 
 
-def build_banker_steps(intent, sentiment, actions):
-    steps = [{"step": 1, "action": "Verify customer identity"}]
-
-    if intent["label"] == "Loan Inquiry":
-        steps.append({"step": 2, "action": "Check loan eligibility and EMI details"})
-    elif intent["label"] == "Withdrawal Request":
-        steps.append({"step": 2, "action": "Verify account balance and withdrawal limits"})
-    elif intent["label"] == "Deposit Request":
-        steps.append({"step": 2, "action": "Verify deposit source and account details"})
-    elif intent["label"] == "Customer Complaint":
-        steps.append({"step": 2, "action": "Register complaint in CRM system"})
-
-    if sentiment["label"] == "Negative":
-        steps.append({"step": 3, "action": "Escalate call to senior support officer"})
-    else:
-        steps.append({"step": 3, "action": "Proceed with standard customer assistance"})
-
-    for a in actions:
-        steps.append({"step": len(steps) + 1, "action": a})
-
-    return steps
-
-
 def build_structured_summary(name, intent, sentiment, priority, risk):
-    summary = []
-    summary.append(f"Customer identified as {name}" if name else "Customer identity not clearly stated")
-    summary.append(f"Primary intent is {intent['label']}")
-    summary.append(f"Customer sentiment is {sentiment['label']}")
-    summary.append(f"Call priority set to {priority}")
-    summary.append("Immediate attention required due to high risk" if risk == "High" else "No immediate risk detected")
-    return summary
+    return [
+        f"Customer identified as {name}" if name else "Customer identity not clearly stated",
+        f"Primary intent: {intent['label']}",
+        f"Customer sentiment: {sentiment['label']}",
+        f"Call priority: {priority}",
+        "Immediate banker attention required" if risk == "High" else "No immediate risk detected"
+    ]
+
+
+
+async def verify_with_backboard(transcript, intent, priority, sentiment):
+    """
+    Use Backboard AI to verify and potentially correct the rule-based analysis
+    """
+
+    if not BACKBOARD_ASSISTANT_ID or not BACKBOARD_THREAD_ID or not backboard_client:
+        return {
+            "verified_intent": intent,
+            "verified_priority": priority,
+            "reasoning": ["Backboard AI not configured. Using rule-based analysis."]
+        }
+
+
+    prompt = f"""Analyze this banking call transcript and verify the automated analysis results.
+
+CALL TRANSCRIPT:
+{transcript}
+
+AUTOMATED SYSTEM RESULTS:
+- Detected Intent: {intent}
+- Assigned Priority: {priority}
+- Detected Sentiment: {sentiment}
+
+Please verify if these automated results are correct or need correction.
+Return your analysis as a JSON object with three fields: verified_intent, verified_priority, and reasoning."""
+
+    try:
+        print(f"🔄 Sending verification request to Backboard...")
+        
+
+        response = await backboard_client.add_message(
+            thread_id=BACKBOARD_THREAD_ID,
+            content=prompt,
+            llm_provider="openai",
+            model_name="gpt-4o",
+            memory="Auto",
+            stream=False
+        )
+
+
+        print(f"🔍 Response type: {type(response)}")
+        
+      
+        response_content = ""
+        
+        if hasattr(response, 'content'):
+            response_content = response.content
+            print(f"✅ Got content via attribute")
+        elif isinstance(response, dict) and "content" in response:
+            response_content = response["content"]
+            print(f"✅ Got content via dict key")
+        else:
+            response_content = str(response)
+            print(f"⚠️ Using string conversion")
+        
+        print(f"🔍 Raw response (first 300 chars): {response_content[:300] if response_content else 'EMPTY'}")
+        
+        
+        if not response_content or len(response_content.strip()) == 0:
+            print(f"❌ Empty response from Backboard")
+            return {
+                "verified_intent": intent,
+                "verified_priority": priority,
+                "reasoning": ["Backboard returned empty response. Using rule-based analysis."]
+            }
+        
+      
+        try:
+            
+            cleaned_content = response_content.strip()
+            
+      
+            if cleaned_content.startswith("```json"):
+                cleaned_content = cleaned_content.replace("```json", "").replace("```", "").strip()
+            elif cleaned_content.startswith("```"):
+                cleaned_content = cleaned_content.replace("```", "").strip()
+            
+        
+            parsed_response = json.loads(cleaned_content)
+            
+            
+            if "verified_intent" in parsed_response and "verified_priority" in parsed_response:
+                print(f"✅ Backboard verification successful!")
+                print(f"   Intent: {parsed_response['verified_intent']}")
+                print(f"   Priority: {parsed_response['verified_priority']}")
+                return parsed_response
+            else:
+                print(f"⚠️ Response missing required fields")
+                raise ValueError("Response missing verified_intent or verified_priority")
+                
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"⚠️ JSON parsing failed: {e}")
+            print(f"   Content was: {response_content[:200]}")
+            return {
+                "verified_intent": intent,
+                "verified_priority": priority,
+                "reasoning": [f"AI response could not be parsed as JSON. Using rule-based analysis."]
+            }
+
+    except Exception as e:
+        print(f"❌ Backboard verification error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "verified_intent": intent,
+            "verified_priority": priority,
+            "reasoning": [f"Error communicating with Backboard AI: {str(e)}. Using rule-based analysis."]
+        }
+
+
 
 
 @app.post("/api/calls/analyze")
@@ -141,47 +298,58 @@ async def analyze_call(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, buffer)
 
     try:
+      
+        print(f"🎤 Transcribing audio file: {file.filename}")
         result = model.transcribe(temp_file)
         transcript = result["text"]
 
+
         name = extract_customer_name(transcript)
         numbers = extract_numbers(transcript)
+
+       
         intent = detect_intent(transcript)
         sentiment = detect_sentiment(transcript)
-        actions = extract_action_items(transcript)
         priority = calculate_priority(intent, sentiment)
         risk = calculate_risk(sentiment)
 
-        summary = build_structured_summary(
-            name,
-            intent,
-            sentiment,
+        summary = build_structured_summary(name, intent, sentiment, priority, risk)
+
+        print(f"📊 Rule-based analysis: Intent={intent['label']}, Priority={priority}, Sentiment={sentiment['label']}")
+
+       
+        ai = await verify_with_backboard(
+            transcript,
+            intent["label"],
             priority,
-            risk
+            sentiment["label"]
         )
 
+        print(f"🤖 AI Verification complete: Intent={ai.get('verified_intent')}, Priority={ai.get('verified_priority')}")
+
+      
         CALL_RESULTS[call_id] = {
             "status": "completed",
             "call_id": call_id,
             "customer_details": {
                 "name": name,
-                "phone_number": numbers["phone_number"],
-                "account_number": numbers["account_number"],
-                "card_number": numbers["card_number"]
+                **{k: v for k, v in numbers.items() if v is not None}
             },
-            "intent": intent,
-            "sentiment": sentiment,
-            "priority": priority,
-            "risk_level": risk,
+            "rule_based": {
+                "intent": intent,
+                "priority": priority,
+                "sentiment": sentiment
+            },
+            "ai_verification": ai,
+            "final_decision": {
+                "intent": ai.get("verified_intent", intent["label"]),
+                "priority": ai.get("verified_priority", priority),
+            },
             "summary": summary,
-            "banker_steps": build_banker_steps(intent, sentiment, actions),
             "transcript": transcript
         }
 
         return {"call_id": call_id}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
     finally:
         if os.path.exists(temp_file):
@@ -190,14 +358,13 @@ async def analyze_call(file: UploadFile = File(...)):
 
 @app.get("/api/calls/result/{call_id}")
 def get_call_result(call_id: str):
-    if call_id not in CALL_RESULTS:
-        return {"status": "processing"}
-    return CALL_RESULTS[call_id]
+    return CALL_RESULTS.get(call_id, {"status": "processing"})
 
 
 @app.get("/")
 def root():
     return {
-        "message": "Financial Audio Intelligence Backend is running",
-        "device": DEVICE
+        "message": "Financial Audio Intelligence Backend running",
+        "device": DEVICE,
+        "backboard_enabled": BACKBOARD_ASSISTANT_ID is not None
     }
