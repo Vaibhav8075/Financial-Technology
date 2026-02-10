@@ -3,9 +3,9 @@ import { motion } from 'framer-motion'
 
 export default function ClientView({ calls, onOpenCall }) {
   const [expandedClient, setExpandedClient] = useState(null)
-  const [sortBy, setSortBy] = useState('recent') // 'recent', 'priority', 'risk'
+  const [sortBy, setSortBy] = useState('recent') 
 
-  // Group calls by client
+  
   const clientGroups = useMemo(() => {
     const groups = {}
 
@@ -33,21 +33,21 @@ export default function ClientView({ calls, onOpenCall }) {
       groups[clientId].calls.push(call)
       groups[clientId].totalActions += call.action_items?.length || 0
       
-      // Update priority
+  
       if (call.priority === 'high' || groups[clientId].highestPriority === 'high') {
         groups[clientId].highestPriority = 'high'
       } else if (call.priority === 'medium' && groups[clientId].highestPriority === 'low') {
         groups[clientId].highestPriority = 'medium'
       }
 
-      // Update risk
+
       if (call.risk_level === 'High') {
         groups[clientId].highestRisk = 'High'
       } else if (call.risk_level === 'Medium' && groups[clientId].highestRisk === 'Low') {
         groups[clientId].highestRisk = 'Medium'
       }
 
-      // Update last contact (assuming newer calls have higher IDs)
+      
       if (!groups[clientId].lastContact || call.id > groups[clientId].lastContact) {
         groups[clientId].lastContact = call.id
       }
@@ -56,7 +56,7 @@ export default function ClientView({ calls, onOpenCall }) {
     return Object.values(groups)
   }, [calls])
 
-  // Sort clients
+ 
   const sortedClients = useMemo(() => {
     const sorted = [...clientGroups]
     
@@ -83,13 +83,13 @@ export default function ClientView({ calls, onOpenCall }) {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
+     
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        <h2 className="text-2xl font-bold text-white">
           Clients Overview
         </h2>
         
-        {/* Sort Options */}
+     
         <div className="flex gap-2">
           <button
             onClick={() => setSortBy('recent')}
@@ -124,7 +124,7 @@ export default function ClientView({ calls, onOpenCall }) {
         </div>
       </div>
 
-      {/* Client Cards */}
+     
       {sortedClients.map(client => {
         const isExpanded = expandedClient === client.id
         
@@ -141,13 +141,13 @@ export default function ClientView({ calls, onOpenCall }) {
                 : 'border-slate-700/50'
             }`}
           >
-            {/* Client Header */}
+          
             <button
               onClick={() => setExpandedClient(isExpanded ? null : client.id)}
               className="w-full p-4 flex items-center justify-between hover:bg-slate-700/30 transition-colors"
             >
               <div className="flex items-center gap-4">
-                {/* Avatar */}
+           
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg">
                   {client.name.charAt(0).toUpperCase()}
                 </div>
@@ -168,7 +168,7 @@ export default function ClientView({ calls, onOpenCall }) {
               </div>
 
               <div className="flex items-center gap-3">
-                {/* Badges */}
+          
                 <div className="flex flex-col items-end gap-1">
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-1 bg-slate-700 text-slate-300 text-xs rounded-full">
@@ -205,7 +205,7 @@ export default function ClientView({ calls, onOpenCall }) {
               </div>
             </button>
 
-            {/* Expanded Content */}
+           
             {isExpanded && (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
@@ -266,7 +266,7 @@ function CallSummaryCard({ call, onOpenCall, index }) {
         </div>
       </div>
 
-      {/* Intent & Sentiment */}
+     
       <div className="grid grid-cols-2 gap-3 mb-3">
         {call.intent && (
           <div className="bg-slate-800/50 rounded p-2">
@@ -282,7 +282,7 @@ function CallSummaryCard({ call, onOpenCall, index }) {
         )}
       </div>
 
-      {/* Action Items */}
+     
       {call.action_items && call.action_items.length > 0 && (
         <div>
           <p className="text-xs text-slate-400 mb-2">Action Items:</p>
@@ -302,7 +302,7 @@ function CallSummaryCard({ call, onOpenCall, index }) {
         </div>
       )}
 
-      {/* Summary Preview */}
+   
       {Array.isArray(call.summary) && call.summary.length > 0 && (
         <div className="mt-3 pt-3 border-t border-slate-700/50">
           <p className="text-xs text-slate-400 mb-1">Summary:</p>

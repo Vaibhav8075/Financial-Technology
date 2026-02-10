@@ -39,9 +39,9 @@ CALL_RESULTS = {}
 BACKBOARD_API_KEY = os.getenv("BACKBOARD_API_KEY")
 
 if not BACKBOARD_API_KEY:
-    print("❌ BACKBOARD_API_KEY NOT FOUND")
+    print("BACKBOARD_API_KEY NOT FOUND")
 else:
-    print("✅ BACKBOARD_API_KEY loaded")
+    print("BACKBOARD_API_KEY loaded")
 
 backboard_client = BackboardClient(api_key=BACKBOARD_API_KEY) if BACKBOARD_API_KEY else None
 BACKBOARD_ASSISTANT_ID = None
@@ -54,7 +54,7 @@ async def setup_backboard():
     global BACKBOARD_ASSISTANT_ID, BACKBOARD_THREAD_ID
 
     if not BACKBOARD_API_KEY or not backboard_client:
-        print("⚠️ Backboard disabled — running rule-based only")
+        print("Backboard disabled — running rule-based only")
         return
 
     try:
@@ -89,15 +89,15 @@ When you analyze a call, consider:
         )
 
         BACKBOARD_ASSISTANT_ID = assistant.assistant_id
-        print(f"✅ Backboard Assistant created: {BACKBOARD_ASSISTANT_ID}")
+        print(f"Backboard Assistant created: {BACKBOARD_ASSISTANT_ID}")
 
    
         thread = await backboard_client.create_thread(BACKBOARD_ASSISTANT_ID)
         BACKBOARD_THREAD_ID = thread.thread_id
-        print(f"✅ Backboard Thread created: {BACKBOARD_THREAD_ID}")
+        print(f"Backboard Thread created: {BACKBOARD_THREAD_ID}")
 
     except Exception as e:
-        print(f"❌ Backboard Assistant creation failed: {e}")
+        print(f"Backboard Assistant creation failed: {e}")
         BACKBOARD_ASSISTANT_ID = None
         BACKBOARD_THREAD_ID = None
 
@@ -217,26 +217,26 @@ Return your analysis as a JSON object with three fields: verified_intent, verifi
         )
 
 
-        print(f"🔍 Response type: {type(response)}")
+        print(f"Response type: {type(response)}")
         
       
         response_content = ""
         
         if hasattr(response, 'content'):
             response_content = response.content
-            print(f"✅ Got content via attribute")
+            print(f"Got content via attribute")
         elif isinstance(response, dict) and "content" in response:
             response_content = response["content"]
-            print(f"✅ Got content via dict key")
+            print(f"Got content via dict key")
         else:
             response_content = str(response)
-            print(f"⚠️ Using string conversion")
+            print(f"Using string conversion")
         
         print(f"🔍 Raw response (first 300 chars): {response_content[:300] if response_content else 'EMPTY'}")
         
         
         if not response_content or len(response_content.strip()) == 0:
-            print(f"❌ Empty response from Backboard")
+            print(f"Empty response from Backboard")
             return {
                 "verified_intent": intent,
                 "verified_priority": priority,
@@ -259,12 +259,12 @@ Return your analysis as a JSON object with three fields: verified_intent, verifi
             
             
             if "verified_intent" in parsed_response and "verified_priority" in parsed_response:
-                print(f"✅ Backboard verification successful!")
+                print(f" Backboard verification successful!")
                 print(f"   Intent: {parsed_response['verified_intent']}")
                 print(f"   Priority: {parsed_response['verified_priority']}")
                 return parsed_response
             else:
-                print(f"⚠️ Response missing required fields")
+                print(f"Response missing required fields")
                 raise ValueError("Response missing verified_intent or verified_priority")
                 
         except (json.JSONDecodeError, ValueError) as e:
@@ -277,7 +277,7 @@ Return your analysis as a JSON object with three fields: verified_intent, verifi
             }
 
     except Exception as e:
-        print(f"❌ Backboard verification error: {e}")
+        print(f"Backboard verification error: {e}")
         import traceback
         traceback.print_exc()
         return {
@@ -315,7 +315,7 @@ async def analyze_call(file: UploadFile = File(...)):
 
         summary = build_structured_summary(name, intent, sentiment, priority, risk)
 
-        print(f"📊 Rule-based analysis: Intent={intent['label']}, Priority={priority}, Sentiment={sentiment['label']}")
+        print(f"Rule-based analysis: Intent={intent['label']}, Priority={priority}, Sentiment={sentiment['label']}")
 
        
         ai = await verify_with_backboard(
@@ -325,7 +325,7 @@ async def analyze_call(file: UploadFile = File(...)):
             sentiment["label"]
         )
 
-        print(f"🤖 AI Verification complete: Intent={ai.get('verified_intent')}, Priority={ai.get('verified_priority')}")
+        print(f"AI Verification complete: Intent={ai.get('verified_intent')}, Priority={ai.get('verified_priority')}")
 
       
         CALL_RESULTS[call_id] = {

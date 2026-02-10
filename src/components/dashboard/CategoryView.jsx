@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 export default function CategoryView({ calls, onOpenCall }) {
   const [expandedCategory, setExpandedCategory] = useState('loan')
 
-  // Categorize calls based on intent and action items
+ 
   const categories = useMemo(() => {
     const result = {
       loan: { requests: [], payoffs: [] },
@@ -145,7 +145,7 @@ export default function CategoryView({ calls, onOpenCall }) {
             animate={{ opacity: 1, y: 0 }}
             className={`bg-slate-800/50 backdrop-blur-sm rounded-xl border ${category.borderColor} overflow-hidden`}
           >
-            {/* Category Header */}
+        
             <button
               onClick={() => setExpandedCategory(isExpanded ? null : category.key)}
               className="w-full p-4 flex items-center justify-between hover:bg-slate-700/30 transition-colors"
@@ -173,7 +173,7 @@ export default function CategoryView({ calls, onOpenCall }) {
               </motion.svg>
             </button>
 
-            {/* Category Content */}
+          
             {isExpanded && (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}

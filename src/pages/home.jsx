@@ -40,6 +40,7 @@ export default function Home() {
         duration: 'Processing...',
         priority: 'low',
         needsFollowUp: false,
+        
       },
       ...prev,
     ])
