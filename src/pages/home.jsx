@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
 
 import Header from '../components/dashboard/Header'
 import Stats from '../components/dashboard/Stats'
@@ -10,15 +9,13 @@ import AudioUpload from '../components/dashboard/AudioUpload'
 import Queue from '../components/dashboard/Queue'
 import Tips from '../components/dashboard/Tips'
 
-const sampleCalls = []
-
 export default function Home() {
   const fileInputRef = useRef(null)
-  const [calls, setCalls] = useState(sampleCalls)
+  const [calls, setCalls] = useState([])
   const [selectedCall, setSelectedCall] = useState(null)
   const [query, setQuery] = useState('')
   const [activeView, setActiveView] = useState('category')
-  const [stats, setStats] = useState({ total: 0, pending: 0, urgent: 0 })
+  const [stats, setStats] = useState({ total: 0, high: 0, urgent: 0 })
 
   function handleUploadClick() {
     fileInputRef.current?.click()
@@ -33,14 +30,12 @@ export default function Home() {
   async function handleAnalyzeCall(file) {
     const tempId = Date.now()
 
+    // Add a placeholder while processing
     setCalls(prev => [
       {
         id: tempId,
         title: file.name,
-        duration: 'Processing...',
-        priority: 'low',
-        needsFollowUp: false,
-        
+        status: 'processing',
       },
       ...prev,
     ])
@@ -58,31 +53,71 @@ export default function Home() {
 
       const { call_id } = await res.json()
 
-      const resultRes = await fetch(
-        `http://127.0.0.1:8000/api/calls/result/${call_id}`
-      )
+      // Poll for result
+      let data = null
+      for (let i = 0; i < 30; i++) {
+        const resultRes = await fetch(`http://127.0.0.1:8000/api/calls/result/${call_id}`)
+        data = await resultRes.json()
+        if (data.status === 'completed') break
+        await new Promise(r => setTimeout(r, 2000))
+      }
 
-      const data = await resultRes.json()
+      if (!data || data.status !== 'completed') throw new Error('Processing timed out')
+
+      // Map the backend response correctly
+      // Backend shape:
+      // {
+      //   status, call_id,
+      //   customer_details: { name, phone_number, account_number, card_number },
+      //   rule_based: { intent: { label, confidence }, priority, sentiment: { label, score } },
+      //   ai_verification: { verified_intent, verified_priority, reasoning: [] },
+      //   final_decision: { intent, priority },
+      //   summary: [],
+      //   transcript: ""
+      // }
+
+      const mappedCall = {
+        id: call_id,
+        title: file.name,
+        status: 'completed',
+
+        // Customer info
+        customer_details: data.customer_details || {},
+
+        // Rule-based results
+        rule_based: data.rule_based || {},
+
+        // Backboard AI verification results — shown separately in UI
+        ai_verification: data.ai_verification || {
+          verified_intent: data.rule_based?.intent?.label,
+          verified_priority: data.rule_based?.priority,
+          reasoning: ['AI verification not available'],
+        },
+
+        // Final merged decision
+        final_decision: data.final_decision || {
+          intent: data.rule_based?.intent?.label,
+          priority: data.rule_based?.priority,
+        },
+
+        // Convenience accessors (used by CategoryView / ClientView)
+        intent: {
+          label: data.final_decision?.intent || data.rule_based?.intent?.label || 'General Inquiry',
+          confidence: data.rule_based?.intent?.confidence || 'Medium',
+        },
+        sentiment: data.rule_based?.sentiment || { label: 'Neutral', score: 0 },
+        priority: (data.final_decision?.priority || data.rule_based?.priority || 'Medium').toLowerCase(),
+        risk_level: data.rule_based?.sentiment?.label === 'Negative' ? 'High' : 'Low',
+
+        summary: data.summary || [],
+        transcript: data.transcript || '',
+
+        // CategoryView needs action_items — derive from final intent since backend doesn't return them
+        action_items: buildActionItems(data),
+      }
 
       setCalls(prev =>
-        prev.map(call =>
-          call.id === tempId
-            ? {
-                id: call_id,
-                title: file.name,
-                duration: data.duration || 'Completed',
-                priority: data.priority || 'medium',
-                needsFollowUp: data.action_items?.length > 0,
-                transcript: data.transcript,
-                summary: data.summary,
-                intent: data.intent,
-                sentiment: data.sentiment,
-                action_items: data.action_items,
-                risk_level: data.risk_level,
-                customer_details: data.customer_details,
-              }
-            : call
-        )
+        prev.map(call => (call.id === tempId ? mappedCall : call))
       )
     } catch (err) {
       console.error(err)
@@ -91,29 +126,46 @@ export default function Home() {
     }
   }
 
+  // Derive action items from backend data so CategoryView works
+  function buildActionItems(data) {
+    const intent = data.final_decision?.intent || data.rule_based?.intent?.label || ''
+    const priority = data.final_decision?.priority || data.rule_based?.priority || 'Medium'
+    const customerName = data.customer_details?.name || 'Customer'
+
+    const items = []
+
+    if (intent.toLowerCase().includes('loan')) {
+      items.push({ task: `Process loan inquiry for ${customerName}`, completed: false })
+    } else if (intent.toLowerCase().includes('withdrawal')) {
+      items.push({ task: `Process withdrawal request for ${customerName}`, completed: false })
+    } else if (intent.toLowerCase().includes('deposit')) {
+      items.push({ task: `Process deposit request for ${customerName}`, completed: false })
+    } else if (intent.toLowerCase().includes('complaint')) {
+      items.push({ task: `Resolve complaint from ${customerName}`, completed: false })
+    } else {
+      items.push({ task: `Follow up with ${customerName} regarding inquiry`, completed: false })
+    }
+
+    if (priority === 'High' || data.rule_based?.sentiment?.label === 'Negative') {
+      items.push({ task: `Escalate to senior banker — high priority case`, completed: false })
+    }
+
+    return items
+  }
+
   useEffect(() => {
-    const pending = calls.filter(c => 
-      c.action_items?.some(item => !item.completed)
-    ).length
-    
-    const urgent = calls.filter(c => 
-      c.priority === 'high' || c.risk_level === 'High'
-    ).length
+    const high = calls.filter(c => c.priority === 'high').length
+    const urgent = calls.filter(c => c.risk_level === 'High').length
 
     setStats({
-      total: calls.length,
-      pending,
+      total: calls.filter(c => c.status === 'completed').length,
+      high,
       urgent,
     })
   }, [calls])
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.4 }}
-      className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-50"
-    >
+    <div className="min-h-screen" style={{ background: "#EBE3D2", color: "#414833" }}>
       <div className="max-w-7xl mx-auto px-6 py-8">
         <Header
           query={query}
@@ -128,21 +180,19 @@ export default function Home() {
         <div className="flex gap-4 mt-8 mb-6">
           <button
             onClick={() => setActiveView('category')}
-            className={`px-6 py-2.5 rounded-lg font-semibold transition-all ${
-              activeView === 'category'
-                ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30'
-                : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800'
-            }`}
+            className="px-6 py-2.5 rounded-lg font-semibold transition-all hover:opacity-90"
+            style={activeView === 'category'
+              ? { background: '#414833', color: '#EBE3D2', boxShadow: '0 4px 14px #41483340' }
+              : { background: '#CCBFA366', color: '#737A5D', border: '1px solid #CCBFA3' }}
           >
             Category View
           </button>
           <button
             onClick={() => setActiveView('client')}
-            className={`px-6 py-2.5 rounded-lg font-semibold transition-all ${
-              activeView === 'client'
-                ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30'
-                : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800'
-            }`}
+            className="px-6 py-2.5 rounded-lg font-semibold transition-all hover:opacity-90"
+            style={activeView === 'client'
+              ? { background: '#414833', color: '#EBE3D2', boxShadow: '0 4px 14px #41483340' }
+              : { background: '#CCBFA366', color: '#737A5D', border: '1px solid #CCBFA3' }}
           >
             Client View
           </button>
@@ -151,13 +201,13 @@ export default function Home() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             {activeView === 'category' ? (
-              <CategoryView 
-                calls={calls} 
+              <CategoryView
+                calls={calls.filter(c => c.status === 'completed')}
                 onOpenCall={(call) => setSelectedCall(call)}
               />
             ) : (
-              <ClientView 
-                calls={calls}
+              <ClientView
+                calls={calls.filter(c => c.status === 'completed')}
                 onOpenCall={(call) => setSelectedCall(call)}
               />
             )}
@@ -165,7 +215,7 @@ export default function Home() {
 
           <div className="space-y-6">
             <AudioUpload onAnalyze={handleAnalyzeCall} />
-            <Queue calls={calls.filter(c => c.duration === 'Processing...')} />
+            <Queue calls={calls.filter(c => c.status === 'processing')} />
             <Tips />
           </div>
         </div>
@@ -175,6 +225,6 @@ export default function Home() {
         call={selectedCall}
         onClose={() => setSelectedCall(null)}
       />
-    </motion.div>
+    </div>
   )
 }

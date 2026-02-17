@@ -4,23 +4,24 @@ export default function CallItem({ call, onOpen }) {
   return (
     <motion.div
       whileHover={{ scale: 1.01 }}
-      className="flex justify-between bg-black/40 p-3 rounded-lg border border-orange-900/10"
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      className="flex justify-between p-3 rounded-lg"
+      style={{ background: '#EBE3D2', border: '1px solid #CCBFA3' }}
     >
       <div>
-        <p className="font-medium">{call.title}</p>
-        <p className="text-sm text-orange-200">
+        <p className="font-medium" style={{ color: '#414833' }}>{call.title}</p>
+        <p className="text-sm" style={{ color: '#737A5D' }}>
           {call.duration} · {call.priority} priority
         </p>
       </div>
-
       <div className="flex items-center gap-3">
         {call.needsFollowUp && (
-          <span className="text-orange-400 text-sm">Needs follow-up</span>
+          <span className="text-sm font-medium" style={{ color: '#737A5D' }}>Needs follow-up</span>
         )}
-
         <button
           onClick={onOpen}
-          className="bg-orange-400 hover:bg-orange-500 text-black px-3 py-1 rounded"
+          className="px-3 py-1 rounded font-semibold text-sm transition-opacity hover:opacity-80"
+          style={{ background: '#414833', color: '#EBE3D2' }}
         >
           Open
         </button>
