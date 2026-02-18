@@ -1,5 +1,10 @@
 fastapi
-uvicorn
-openai
-python-dotenv
+uvicorn[standard]
 python-multipart
+openai-whisper
+torch
+python-dotenv
+backboard
+python-jose[cryptography]
+passlib[bcrypt]
+slowapi
