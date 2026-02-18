@@ -1,16 +1,52 @@
-# React + Vite
+# AI-Powered Banking Call Intelligence System
+### Enterprise-Grade Hybrid Intelligence for Structured Financial Insights
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/Frontend-React-61DAFB?style=flat&logo=react&logoColor=black)](https://reactjs.org/)
+[![Whisper](https://img.shields.io/badge/STT-OpenAI_Whisper-white?style=flat&logo=openai&logoColor=black)](https://github.com/openai/whisper)
 
-Currently, two official plugins are available:
+## Overview
+Financial institutions process thousands of calls daily, yet critical data regarding **intent, urgency, and risk** often remains trapped in raw audio. Manual review is non-scalable, while pure AI approaches introduce hallucination risks—unacceptable in regulated banking environments.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+This project implements a **Deterministic + AI-Verified Hybrid Pipeline**. By layering AI verification over rule-based logic, the system ensures **zero hallucination**, full auditability, and a reliable fallback mechanism for compliance-heavy operations.
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Key Features
+* **Intent Detection:** Hybrid logic to accurately identify customer needs.
+* **Risk Mitigation:** Real-time escalation for fraud or high-priority threats.
+* **PII Masking:** Automatic redaction of sensitive data for compliance.
+* **AI Verification:** Backboard AI layer to review and explain decisions.
+* **Smart Fallback:** Automatically reverts to rules if AI confidence is low.
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## The Hybrid Intelligence Architecture
+Unlike standard LLM wrappers, this system uses a tiered decision-making process:
+
+1. **Rule-Based Layer:** Executes keyword-weighted logic for intent and PII masking. This provides a consistent, explainable baseline.
+2. **AI Verification Layer:** Reviews the transcript and rule outputs to provide contextual nuance and reasoning.
+3. **Fallback Mechanism:** If the AI confidence score is low or the service fails, the system defaults to the deterministic rule-based output.
+
+---
+
+## System Workflow and Data Flow
+The system utilizes a synchronous ingestion with an asynchronous polling architecture to ensure stability during intensive transcription tasks.
+
+```mermaid
+graph TD
+    A[Frontend: Audio Upload] -->|POST /api/calls/analyze| B(Backend: FastAPI Ingestion)
+    B --> C{Speech-to-Text}
+    C -->|Whisper Model| D[Full Transcript Generation]
+    
+    subgraph Hybrid_Analysis_Engine
+    D --> E[Rule-Based Analysis]
+    E -->|Intent/Sentiment/PII| F[AI Verification Layer]
+    F -->|Backboard AI| G{Final Decision Merge}
+    G -->|Fallback| E
+    end
+    
+    G --> H[(Result Storage)]
+    
+    I[Frontend: Results Polling] -->|GET /api/calls/result/id| H
+    H -->|status: completed| J[Dashboard & Risk Alerts]
