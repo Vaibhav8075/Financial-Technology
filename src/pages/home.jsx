@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from 'react'
+import { motion } from 'framer-motion'
 
 import Header from '../components/dashboard/Header'
 import Stats from '../components/dashboard/Stats'
@@ -8,6 +9,10 @@ import CallModal from '../components/dashboard/CallModal'
 import AudioUpload from '../components/dashboard/AudioUpload'
 import Queue from '../components/dashboard/Queue'
 import Tips from '../components/dashboard/Tips'
+
+// ✅ API Configuration
+const API_BASE_URL = 'http://127.0.0.1:8000'
+const API_KEY = 'banking_secret_key_2024_change_this_in_production' // Should match .env file
 
 export default function Home() {
   const fileInputRef = useRef(null)
@@ -44,38 +49,45 @@ export default function Home() {
     formData.append('file', file)
 
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/calls/analyze', {
+      // ✅ POST with API Key authentication
+      const res = await fetch(`${API_BASE_URL}/api/calls/analyze`, {
         method: 'POST',
+        headers: {
+          'X-API-Key': API_KEY, // ✅ Authentication header
+        },
         body: formData,
       })
 
-      if (!res.ok) throw new Error('Analyze failed')
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ detail: 'Unknown error' }))
+        throw new Error(errorData.detail || 'Analyze failed')
+      }
 
       const { call_id } = await res.json()
 
-      // Poll for result
+      // Poll for result with authentication
       let data = null
       for (let i = 0; i < 30; i++) {
-        const resultRes = await fetch(`http://127.0.0.1:8000/api/calls/result/${call_id}`)
+        const resultRes = await fetch(`${API_BASE_URL}/api/calls/result/${call_id}`, {
+          headers: {
+            'X-API-Key': API_KEY, // ✅ Authentication header
+          },
+        })
+
+        if (!resultRes.ok) {
+          throw new Error('Failed to fetch result')
+        }
+
         data = await resultRes.json()
         if (data.status === 'completed') break
         await new Promise(r => setTimeout(r, 2000))
       }
 
-      if (!data || data.status !== 'completed') throw new Error('Processing timed out')
+      if (!data || data.status !== 'completed') {
+        throw new Error('Processing timed out')
+      }
 
       // Map the backend response correctly
-      // Backend shape:
-      // {
-      //   status, call_id,
-      //   customer_details: { name, phone_number, account_number, card_number },
-      //   rule_based: { intent: { label, confidence }, priority, sentiment: { label, score } },
-      //   ai_verification: { verified_intent, verified_priority, reasoning: [] },
-      //   final_decision: { intent, priority },
-      //   summary: [],
-      //   transcript: ""
-      // }
-
       const mappedCall = {
         id: call_id,
         title: file.name,
@@ -87,7 +99,7 @@ export default function Home() {
         // Rule-based results
         rule_based: data.rule_based || {},
 
-        // Backboard AI verification results — shown separately in UI
+        // Backboard AI verification results
         ai_verification: data.ai_verification || {
           verified_intent: data.rule_based?.intent?.label,
           verified_priority: data.rule_based?.priority,
@@ -100,7 +112,7 @@ export default function Home() {
           priority: data.rule_based?.priority,
         },
 
-        // Convenience accessors (used by CategoryView / ClientView)
+        // Convenience accessors
         intent: {
           label: data.final_decision?.intent || data.rule_based?.intent?.label || 'General Inquiry',
           confidence: data.rule_based?.intent?.confidence || 'Medium',
@@ -112,7 +124,7 @@ export default function Home() {
         summary: data.summary || [],
         transcript: data.transcript || '',
 
-        // CategoryView needs action_items — derive from final intent since backend doesn't return them
+        // Derive action_items so CategoryView works
         action_items: buildActionItems(data),
       }
 
@@ -121,12 +133,21 @@ export default function Home() {
       )
     } catch (err) {
       console.error(err)
-      alert('Backend error: ' + err.message)
+      
+      // Enhanced error handling
+      if (err.message.includes('401') || err.message.includes('Invalid or missing API key')) {
+        alert('Authentication failed: Invalid API key. Please check your configuration.')
+      } else if (err.message.includes('429') || err.message.includes('rate limit')) {
+        alert('Rate limit exceeded. Please wait a moment and try again.')
+      } else {
+        alert('Backend error: ' + err.message)
+      }
+      
       setCalls(prev => prev.filter(c => c.id !== tempId))
     }
   }
 
-  // Derive action items from backend data so CategoryView works
+  // Derive action items from backend data
   function buildActionItems(data) {
     const intent = data.final_decision?.intent || data.rule_based?.intent?.label || ''
     const priority = data.final_decision?.priority || data.rule_based?.priority || 'Medium'
@@ -165,7 +186,13 @@ export default function Home() {
   }, [calls])
 
   return (
-    <div className="min-h-screen" style={{ background: "#EBE3D2", color: "#414833" }}>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+      className="min-h-screen"
+      style={{ background: "#EBE3D2", color: "#414833" }}
+    >
       <div className="max-w-7xl mx-auto px-6 py-8">
         <Header
           query={query}
@@ -225,6 +252,6 @@ export default function Home() {
         call={selectedCall}
         onClose={() => setSelectedCall(null)}
       />
-    </div>
+    </motion.div>
   )
 }
